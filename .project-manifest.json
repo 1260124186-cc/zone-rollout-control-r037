@@ -39,6 +39,11 @@
       "responsibility": "probe aggregation, deterministic verdicts, and latest result reads"
     },
     {
+      "id": "audit",
+      "path": "internal/audit",
+      "responsibility": "read-only audit queries, stable filtering, cursor pagination, and fingerprinted exports"
+    },
+    {
       "id": "domain",
       "path": "internal/domain",
       "responsibility": "entities, DNS value validation, transitions, and stable errors"

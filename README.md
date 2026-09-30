@@ -45,6 +45,7 @@ internal/fleet              解析节点档案服务
 internal/allocation         节点选择和租约生命周期
 internal/probe              探针登记、幂等重放和租约完成
 internal/assessment         一致性聚合和最新结果查询
+internal/audit              只读审计查询、过滤、游标分页和指纹导出
 internal/httpapi            HTTP 路由、中间件和响应映射
 internal/workflowprobe      真实 HTTP 路径验证
 ```
@@ -135,6 +136,24 @@ curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/assessments \
   -d '{"request_key": "assess-request-0001"}'
 ```
 
+按对象、动作、请求或时间查询审计事件（只读，不修改状态）：
+
+```bash
+curl -sS 'http://127.0.0.1:8090/v1/audit/events?entity_type=plan&action=created&limit=50'
+curl -sS 'http://127.0.0.1:8090/v1/audit/events?request_key=lease-request-0001'
+curl -sS 'http://127.0.0.1:8090/v1/audit/events?from=2026-09-25T00:00:00Z&to=2026-09-26T00:00:00Z'
+```
+
+受控导出审计事件（带内容指纹，所有页引用同一读取时点）：
+
+```bash
+curl -sS 'http://127.0.0.1:8090/v1/audit/export?entity_type=plan&limit=100'
+# 后续页使用返回的 export_id 和 next_cursor
+curl -sS 'http://127.0.0.1:8090/v1/audit/export?export_id=exp_...&cursor=...&limit=100'
+```
+
+未知过滤参数会被明确拒绝（返回 `validation_failed`）。游标基于 `(at, id)` 键集，重启后同一游标的解释保持稳定。
+
 ## API 概览
 
 成功响应：
@@ -178,6 +197,8 @@ curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/assessments \
 | `PATCH` | `/v1/leases/{id}/probes` | 登记探针并完成租约 |
 | `PATCH` | `/v1/plans/{id}/assessments` | 创建一致性判定 |
 | `GET` | `/v1/plans/{id}/assessments/latest` | 查询最近判定 |
+| `GET` | `/v1/audit/events` | 只读审计事件查询（过滤、排序、游标分页） |
+| `GET` | `/v1/audit/export` | 受控审计导出（内容指纹、同一读取时点） |
 
 ## 状态及失败行为
 

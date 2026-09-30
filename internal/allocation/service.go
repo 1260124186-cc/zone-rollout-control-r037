@@ -122,6 +122,7 @@ func (s *Service) Allocate(
 		state.LeaseRequestKeys[requestIndex] = group.ID
 		store.AddAudit(state, s.ids, "lease_group", group.ID, "created", now, map[string]any{
 			"plan_id":     planID,
+			"request_key": input.RequestKey,
 			"lease_count": len(leaseIDs),
 		})
 		return nil

@@ -21,4 +21,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("PATCH /v1/plans/{id}/assessments", s.assessPlan)
 	mux.HandleFunc("GET /v1/plans/{id}/assessments/latest", s.latestAssessment)
+
+	mux.HandleFunc("GET /v1/audit/events", s.listAuditEvents)
+	mux.HandleFunc("GET /v1/audit/export", s.exportAuditEvents)
 }

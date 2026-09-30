@@ -80,8 +80,9 @@ func (s *Service) Evaluate(
 		plan.Version++
 		state.Plans[planID] = plan
 		store.AddAudit(state, s.ids, "assessment", result.ID, "completed", now, map[string]any{
-			"plan_id": planID,
-			"verdict": result.Verdict,
+			"plan_id":     planID,
+			"request_key": input.RequestKey,
+			"verdict":     result.Verdict,
 		})
 		return nil
 	})
