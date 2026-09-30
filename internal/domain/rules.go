@@ -2,7 +2,9 @@ package domain
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -65,6 +67,62 @@ func ProbeFingerprint(leaseID string, input ProbeInput) string {
 	)
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
+}
+
+// AuditFilterFingerprint hashes the effective filter dimensions. It binds a
+// cursor or export token to its filter, so a cursor cannot be silently reused
+// with different query conditions.
+func AuditFilterFingerprint(filter AuditFilter) string {
+	payload := fmt.Sprintf(
+		"audit-filter-v1|%s|%s|%s|%s|%s|%s",
+		filter.EntityType,
+		filter.EntityID,
+		filter.Action,
+		filter.RequestKey,
+		formatFingerprintTime(filter.From),
+		formatFingerprintTime(filter.To),
+	)
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
+}
+
+// AuditSetFingerprint folds fingerprints of an ordered event slice into one
+// digest. The ordering is fixed (seq ascending), so a set has exactly one
+// fingerprint for a given read point.
+func AuditSetFingerprint(events []AuditEvent) string {
+	hasher := sha256.New()
+	for _, event := range events {
+		payload, _ := json.Marshal(event)
+		length := make([]byte, 8)
+		binary.BigEndian.PutUint64(length, uint64(len(payload)))
+		hasher.Write(length)
+		hasher.Write(payload)
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// AuditFilterView returns the canonical JSON projection used in responses.
+func (filter AuditFilter) View() AuditFilterView {
+	view := AuditFilterView{
+		EntityType: filter.EntityType,
+		EntityID:   filter.EntityID,
+		Action:     filter.Action,
+		RequestKey: filter.RequestKey,
+	}
+	if !filter.From.IsZero() {
+		view.From = formatFingerprintTime(filter.From)
+	}
+	if !filter.To.IsZero() {
+		view.To = formatFingerprintTime(filter.To)
+	}
+	return view
+}
+
+func formatFingerprintTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func BuildAssessment(

@@ -45,6 +45,7 @@ internal/fleet              解析节点档案服务
 internal/allocation         节点选择和租约生命周期
 internal/probe              探针登记、幂等重放和租约完成
 internal/assessment         一致性聚合和最新结果查询
+internal/audit              审计事件只读查询、游标分页和受控导出
 internal/httpapi            HTTP 路由、中间件和响应映射
 internal/workflowprobe      真实 HTTP 路径验证
 ```
@@ -178,6 +179,29 @@ curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/assessments \
 | `PATCH` | `/v1/leases/{id}/probes` | 登记探针并完成租约 |
 | `PATCH` | `/v1/plans/{id}/assessments` | 创建一致性判定 |
 | `GET` | `/v1/plans/{id}/assessments/latest` | 查询最近判定 |
+| `GET` | `/v1/audit/events` | 按对象、动作、请求键和时间只读查询审计事件 |
+| `PUT` | `/v1/audit/exports` | 在当前读取时点固定一份受控导出 |
+| `GET` | `/v1/audit/exports` | 按导出令牌分页读取固定的导出 |
+
+## 审计查询与受控导出
+
+审计事件只追加、不可变，每条事件带单调递增的 `seq`。所有审计读取都只走读事务，不会修改审计或业务状态。
+
+事件查询 `GET /v1/audit/events` 支持的查询条件（除此以外的参数一律返回 `validation_failed`）：
+
+- `entity_type`、`entity_id`：按对象类型和对象标识精确过滤。
+- `action`：按动作精确过滤，如 `created`、`stored`、`enrolled`。
+- `request_key`：按触发写入的请求键精确过滤（租约分配、探针登记、判定）。
+- `from`、`to`：RFC3339 时间边界，边界包含在内，`from` 不得晚于 `to`。
+- `limit`（1–100，默认 50）与不透明 `cursor`。
+
+排序固定为 `seq` 升序；游标自带过滤指纹，不能换用其它过滤条件重用。每页 `meta` 返回 `order`、`state_revision`、回显的 `filter`，以及覆盖本页事件的 `content_fingerprint`。
+
+受控导出：
+
+1. `PUT /v1/audit/exports?<过滤条件>` 在一个读事务内固定读取时点，返回 `state_revision`、`last_seq`、冻结的过滤条件、完整结果集的 `content_fingerprint`、事件数和自包含的 `token`；不写入任何状态。
+2. `GET /v1/audit/exports?export=<token>&limit=<n>` 分页读取该导出。每页都回传同一份导出引用（同一读取时点和同一全量指纹），服务端在边界内重新校验全量指纹，导出之后的新事件不会出现；令牌损坏或与数据不符时返回 `validation_failed` 或 `export_mismatch`。
+3. 游标和导出令牌不依赖服务端会话，进程重启后含义不变；旧快照缺失的 `seq` 会按既有追加顺序在加载时补齐。
 
 ## 状态及失败行为
 
@@ -216,6 +240,7 @@ go run ./cmd/workflowprobe plan-revision-lifecycle
 go run ./cmd/workflowprobe node-lease-allocation
 go run ./cmd/workflowprobe probe-ingestion
 go run ./cmd/workflowprobe consistency-assessment
+go run ./cmd/workflowprobe audit-query-export
 ```
 
 探针不访问外部网络，也不依赖已有状态文件。

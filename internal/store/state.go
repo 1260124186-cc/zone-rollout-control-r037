@@ -42,5 +42,15 @@ func normalize(state domain.State) domain.State {
 	if state.AuditEvents == nil {
 		state.AuditEvents = []domain.AuditEvent{}
 	}
+	// Backfill stable sequence numbers for snapshots written before the
+	// audit stream carried seq. The on-disk slice order is append order, so
+	// positional numbers reproduce the same fixed ordering after restart.
+	if len(state.AuditEvents) > 0 && state.AuditEvents[0].Seq == 0 {
+		for index := range state.AuditEvents {
+			if state.AuditEvents[index].Seq == 0 {
+				state.AuditEvents[index].Seq = uint64(index + 1)
+			}
+		}
+	}
 	return state
 }

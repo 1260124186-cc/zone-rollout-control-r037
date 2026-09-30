@@ -20,6 +20,8 @@ func Run(args []string, output io.Writer) error {
 		run = runProbeIngestion
 	case "consistency-assessment":
 		run = runConsistencyAssessment
+	case "audit-query-export":
+		run = runAuditQueryExport
 	default:
 		return fmt.Errorf("unsupported workflow %q", args[0])
 	}

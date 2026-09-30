@@ -47,7 +47,7 @@ func (s *Service) Enroll(ctx context.Context, input domain.NodeCreateInput) (dom
 			}
 		}
 		state.Nodes[node.ID] = node
-		store.AddAudit(state, s.ids, "node", node.ID, "enrolled", now, map[string]any{
+		store.AddAudit(state, s.ids, "node", node.ID, "enrolled", "", now, map[string]any{
 			"node_name": node.NodeName,
 			"region":    node.Region,
 		})

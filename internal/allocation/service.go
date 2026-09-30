@@ -120,7 +120,7 @@ func (s *Service) Allocate(
 		}
 		state.LeaseGroups[group.ID] = group
 		state.LeaseRequestKeys[requestIndex] = group.ID
-		store.AddAudit(state, s.ids, "lease_group", group.ID, "created", now, map[string]any{
+		store.AddAudit(state, s.ids, "lease_group", group.ID, "created", input.RequestKey, now, map[string]any{
 			"plan_id":     planID,
 			"lease_count": len(leaseIDs),
 		})
@@ -163,7 +163,7 @@ func (s *Service) Release(ctx context.Context, leaseID string) (domain.NodeLease
 			node.UpdatedAt = now
 			state.Nodes[node.ID] = node
 		}
-		store.AddAudit(state, s.ids, "lease", leaseID, "released", now, nil)
+		store.AddAudit(state, s.ids, "lease", leaseID, "released", "", now, nil)
 		result = lease
 		return nil
 	})

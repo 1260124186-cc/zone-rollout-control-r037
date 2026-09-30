@@ -134,10 +134,12 @@ type RolloutAssessment struct {
 }
 
 type AuditEvent struct {
+	Seq        uint64         `json:"seq"`
 	ID         string         `json:"id"`
 	EntityType string         `json:"entity_type"`
 	EntityID   string         `json:"entity_id"`
 	Action     string         `json:"action"`
+	RequestKey string         `json:"request_key,omitempty"`
 	At         time.Time      `json:"at"`
 	Attributes map[string]any `json:"attributes,omitempty"`
 }
@@ -170,4 +172,70 @@ type PlanPage struct {
 type NodePage struct {
 	Items []ResolverNode `json:"items"`
 	Meta  PageMeta       `json:"meta"`
+}
+
+// AuditFilter is the stable, application-level filter for audit reads.
+// Every supported query dimension is explicit; unknown dimensions must be
+// rejected by the HTTP layer before reaching the audit service.
+type AuditFilter struct {
+	EntityType string
+	EntityID   string
+	Action     string
+	RequestKey string
+	From       time.Time
+	To         time.Time
+}
+
+// AuditFilterView is the canonical JSON projection of an AuditFilter.
+type AuditFilterView struct {
+	EntityType string `json:"entity_type,omitempty"`
+	EntityID   string `json:"entity_id,omitempty"`
+	Action     string `json:"action,omitempty"`
+	RequestKey string `json:"request_key,omitempty"`
+	From       string `json:"from,omitempty"`
+	To         string `json:"to,omitempty"`
+}
+
+// AuditPageMeta describes one fixed-order, cursor-paginated audit read.
+// The ordering is always seq ascending; content_fingerprint covers exactly
+// the items returned in the page.
+type AuditPageMeta struct {
+	Limit              int             `json:"limit"`
+	NextCursor         string          `json:"next_cursor,omitempty"`
+	StateRevision      uint64          `json:"state_revision"`
+	Order              string          `json:"order"`
+	Filter             AuditFilterView `json:"filter"`
+	ContentFingerprint string          `json:"content_fingerprint"`
+}
+
+type AuditPage struct {
+	Items []AuditEvent  `json:"items"`
+	Meta  AuditPageMeta `json:"meta"`
+}
+
+// AuditExportRef pins an export to one read point (state revision and last
+// included seq) and to one frozen filter. content_fingerprint covers the
+// complete filtered event set up to LastSeq.
+type AuditExportRef struct {
+	StateRevision      uint64          `json:"state_revision"`
+	LastSeq            uint64          `json:"last_seq"`
+	Filter             AuditFilterView `json:"filter"`
+	ContentFingerprint string          `json:"content_fingerprint"`
+	EventCount         int             `json:"event_count"`
+	CreatedAt          time.Time       `json:"created_at"`
+}
+
+// AuditExportPageMeta carries the export reference on every page so that all
+// pages demonstrably share one read point.
+type AuditExportPageMeta struct {
+	Limit              int            `json:"limit"`
+	NextCursor         string         `json:"next_cursor,omitempty"`
+	Order              string         `json:"order"`
+	ContentFingerprint string         `json:"content_fingerprint"`
+	Export             AuditExportRef `json:"export"`
+}
+
+type AuditExportPage struct {
+	Items []AuditEvent        `json:"items"`
+	Meta  AuditExportPageMeta `json:"meta"`
 }

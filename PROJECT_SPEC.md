@@ -82,6 +82,17 @@ Zone Rollout Control 是面向 DNS 运维人员的 Go HTTP 控制面。它把区
 - `probe_count`、`success_count`、`success_ratio`、`maximum_latency_ms`。
 - `created_at`。
 
+### AuditEvent
+
+一次成功写入事务产生的、只追加不可变的审计记录。
+
+- `seq`：单调递增的稳定序号，是唯一支持的排序键；旧快照缺失时按追加顺序在加载时补齐。
+- `id`：服务生成的稳定标识。
+- `entity_type`、`entity_id`、`action`：对象类型、对象标识和动作。
+- `request_key`：键控写入（租约分配、探针登记、判定）的请求键。
+- `at`：事件发生时间（UTC，RFC3339）。
+- `attributes`：稳定的附加属性。
+
 ## 4. 状态和规则
 
 ### 滚动计划状态
@@ -212,6 +223,25 @@ ready --lease--> leased --report--> ready
 
 失败行为：缺少区域版本、没有探针、请求键冲突或保存失败不会更新计划摘要。
 
+### W5 审计只读查询与受控导出
+
+入口：
+
+- `GET /v1/audit/events`
+- `PUT /v1/audit/exports`
+- `GET /v1/audit/exports`
+
+步骤：
+
+1. HTTP 层按显式允许列表解析过滤条件，未知参数明确失败。
+2. 审计服务在单个读事务内按 `seq` 升序过滤，游标自带过滤指纹并按固定顺序分页。
+3. 每页返回状态版本、排序、回显过滤条件和本页内容指纹。
+4. 导出在一个读事务内固定 `state_revision`、`last_seq` 和冻结过滤条件，计算全量结果集指纹并签发自包含令牌；后续分页在边界内重新校验全量指纹。
+
+成功行为：可按对象、动作、请求键和时间稳定查询；分页不把全部事件放入响应；导出的每一页引用同一读取时点，之后的新事件不出现在导出中；游标和导出令牌重启后含义不变。
+
+失败行为：查询和导出只走读事务，不修改审计或业务状态；未知过滤条件、非法时间、非法游标和被篡改的导出令牌返回稳定错误。
+
 ## 6. 模块边界
 
 | 模块 | 路径 | 责任 |
@@ -223,6 +253,7 @@ ready --lease--> leased --report--> ready
 | allocation | `internal/allocation` | 节点筛选、幂等分配组和租约生命周期 |
 | probe | `internal/probe` | 探针校验、幂等写入和租约完成 |
 | assessment | `internal/assessment` | 探针聚合和一致性判定 |
+| audit | `internal/audit` | 审计事件只读查询、固定排序游标分页和固定读取时点的受控导出 |
 | domain | `internal/domain` | 聚合、值校验、状态迁移和纯计算 |
 | store | `internal/store` | 锁内副本事务和原子 JSON 持久化 |
 | platform | `internal/platform` | 时钟、标识、游标和文件锁 |
@@ -260,6 +291,9 @@ ready --lease--> leased --report--> ready
 - `PATCH /v1/leases/{id}/probes`
 - `PATCH /v1/plans/{id}/assessments`
 - `GET /v1/plans/{id}/assessments/latest`
+- `GET /v1/audit/events`
+- `PUT /v1/audit/exports`
+- `GET /v1/audit/exports`
 
 ## 8. 工程机制
 
@@ -282,5 +316,6 @@ ready --lease--> leased --report--> ready
 2. 节点分配、租约唯一性、幂等重放和无可用节点冲突。
 3. 探针首写、同键重放、同键异载荷冲突和释放冲突。
 4. 一致性通过、审核触发、最新结果查询和幂等重放。
+5. 审计过滤、固定排序、游标分页、内容指纹、受控导出读取时点和重启稳定性。
 
 每条探针使用独立临时目录，不访问外部网络，结束后关闭服务。

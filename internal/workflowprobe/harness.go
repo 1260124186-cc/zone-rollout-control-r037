@@ -14,6 +14,7 @@ import (
 
 	"solo-0014-zone-rollout-control/internal/allocation"
 	"solo-0014-zone-rollout-control/internal/assessment"
+	"solo-0014-zone-rollout-control/internal/audit"
 	"solo-0014-zone-rollout-control/internal/fleet"
 	"solo-0014-zone-rollout-control/internal/httpapi"
 	"solo-0014-zone-rollout-control/internal/plan"
@@ -23,12 +24,13 @@ import (
 )
 
 type harness struct {
-	baseURL  string
-	clock    *platform.ManualClock
-	client   *http.Client
-	server   *http.Server
-	listener net.Listener
-	tempDir  string
+	baseURL   string
+	statePath string
+	clock     *platform.ManualClock
+	client    *http.Client
+	server    *http.Server
+	listener  net.Listener
+	tempDir   string
 }
 
 func newHarness() (*harness, error) {
@@ -36,38 +38,60 @@ func newHarness() (*harness, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create temporary directory: %w", err)
 	}
-	stateStore, err := store.Open(tempDir + "/state.json")
-	if err != nil {
-		_ = os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("open temporary store: %w", err)
+	h := &harness{
+		statePath: tempDir + "/state.json",
+		clock:     platform.NewManualClock(time.Date(2026, time.September, 25, 12, 0, 0, 0, time.UTC)),
+		client:    &http.Client{Timeout: 10 * time.Second},
+		tempDir:   tempDir,
 	}
-	clock := platform.NewManualClock(time.Date(2026, time.September, 25, 12, 0, 0, 0, time.UTC))
+	if err := h.start(); err != nil {
+		_ = os.RemoveAll(tempDir)
+		return nil, err
+	}
+	return h, nil
+}
+
+// start opens (or re-opens) the store at the same snapshot path and serves
+// it, which simulates a process restart over persisted state.
+func (h *harness) start() error {
+	stateStore, err := store.Open(h.statePath)
+	if err != nil {
+		return fmt.Errorf("open temporary store: %w", err)
+	}
 	ids := platform.CryptoIDGenerator{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	plans := plan.New(stateStore, clock, ids)
-	nodes := fleet.New(stateStore, clock, ids)
-	allocations := allocation.New(stateStore, clock, ids)
-	probes := probe.New(stateStore, clock, ids, allocations)
-	assessments := assessment.New(stateStore, clock, ids)
-	api := httpapi.New(plans, nodes, allocations, probes, assessments, ids, logger)
+	plans := plan.New(stateStore, h.clock, ids)
+	nodes := fleet.New(stateStore, h.clock, ids)
+	allocations := allocation.New(stateStore, h.clock, ids)
+	probes := probe.New(stateStore, h.clock, ids, allocations)
+	assessments := assessment.New(stateStore, h.clock, ids)
+	audits := audit.New(stateStore, h.clock)
+	api := httpapi.New(plans, nodes, allocations, probes, assessments, audits, ids, logger)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		_ = os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("listen: %w", err)
+		return fmt.Errorf("listen: %w", err)
 	}
 	server := &http.Server{Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		_ = server.Serve(listener)
 	}()
-	return &harness{
-		baseURL:  "http://" + listener.Addr().String(),
-		clock:    clock,
-		client:   &http.Client{Timeout: 10 * time.Second},
-		server:   server,
-		listener: listener,
-		tempDir:  tempDir,
-	}, nil
+	h.baseURL = "http://" + listener.Addr().String()
+	h.server = server
+	h.listener = listener
+	return nil
+}
+
+// restart stops the current server and serves the persisted snapshot again on
+// a new listener, exercising cursor and export stability across restart.
+func (h *harness) restart() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := h.server.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutdown server: %w", err)
+	}
+	_ = h.listener.Close()
+	return h.start()
 }
 
 func (h *harness) close() {

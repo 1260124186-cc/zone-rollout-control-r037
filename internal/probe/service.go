@@ -119,7 +119,7 @@ func (s *Service) Submit(
 			node.UpdatedAt = now
 			state.Nodes[node.ID] = node
 		}
-		store.AddAudit(state, s.ids, "probe", result.ID, "stored", now, map[string]any{
+		store.AddAudit(state, s.ids, "probe", result.ID, "stored", input.RequestKey, now, map[string]any{
 			"lease_id": leaseID,
 			"plan_id":  lease.PlanID,
 		})

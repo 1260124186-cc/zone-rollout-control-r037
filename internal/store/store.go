@@ -123,14 +123,17 @@ func AddAudit(
 	entityType string,
 	entityID string,
 	action string,
+	requestKey string,
 	at time.Time,
 	attributes map[string]any,
 ) {
 	state.AuditEvents = append(state.AuditEvents, domain.AuditEvent{
+		Seq:        uint64(len(state.AuditEvents) + 1),
 		ID:         ids.New("aud"),
 		EntityType: entityType,
 		EntityID:   entityID,
 		Action:     action,
+		RequestKey: requestKey,
 		At:         at.UTC(),
 		Attributes: attributes,
 	})

@@ -6,6 +6,7 @@ import (
 
 	"solo-0014-zone-rollout-control/internal/allocation"
 	"solo-0014-zone-rollout-control/internal/assessment"
+	"solo-0014-zone-rollout-control/internal/audit"
 	"solo-0014-zone-rollout-control/internal/fleet"
 	"solo-0014-zone-rollout-control/internal/plan"
 	"solo-0014-zone-rollout-control/internal/platform"
@@ -18,6 +19,7 @@ type Server struct {
 	allocations *allocation.Service
 	probes      *probe.Service
 	assessments *assessment.Service
+	audit       *audit.Service
 	ids         platform.IDGenerator
 	logger      *slog.Logger
 }
@@ -28,6 +30,7 @@ func New(
 	allocations *allocation.Service,
 	probes *probe.Service,
 	assessments *assessment.Service,
+	auditService *audit.Service,
 	ids platform.IDGenerator,
 	logger *slog.Logger,
 ) *Server {
@@ -37,6 +40,7 @@ func New(
 		allocations: allocations,
 		probes:      probes,
 		assessments: assessments,
+		audit:       auditService,
 		ids:         ids,
 		logger:      logger,
 	}
